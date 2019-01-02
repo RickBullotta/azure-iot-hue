@@ -1,0 +1,15 @@
+{
+  "interval": 60000,
+  "deviceId": "RickHue",
+  "hubAddress" : "192.168.1.178",
+  "userName" : "aMLiCr4yyDQjFV6bSN5BGoxuuCDuEmVxmePX00AO",
+  "credentialPath": "~/.iot-hub",
+  "infoConfigurationSync" : false,
+  "debugConfigurationSync" : false,
+  "infoMethods" : true,
+  "debugMethods" : false,
+  "infoOutboundMessages" : false,
+  "debugOutboundMessages" : false,
+  "infoInboundMessages" : false,
+  "debugInboundMessages" : false
+}
