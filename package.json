@@ -4,12 +4,11 @@
   "description": "Client application for the Philips Hue lighting hub, integrated with Azure IoT hub",
   "main": "index.js",
   "dependencies": {
-    "azure-iot-device": "^1.9.9",
-    "azure-iot-device-mqtt": "^1.9.9",
+    "azure-iot-device": "^1.11.0",
+    "azure-iot-device-mqtt": "^1.10.1",
     "request": "^2.88.0"
   },
   "license": "MIT",
   "devDependencies": {
-    "eslint": "^3.17.1"
   }
 }
