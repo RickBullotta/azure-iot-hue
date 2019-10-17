@@ -13,6 +13,21 @@ const ConnectionString = require('azure-iot-device').ConnectionString;
 const Message = require('azure-iot-device').Message;
 const Protocol = require('azure-iot-device-mqtt').Mqtt;
 
+// DPS and connection stuff
+
+const iotHubTransport = require('azure-iot-device-mqtt').Mqtt;
+
+var ProvisioningTransport = require('azure-iot-provisioning-device-mqtt').Mqtt;
+var SymmetricKeySecurityClient = require('azure-iot-security-symmetric-key').SymmetricKeySecurityClient;
+var ProvisioningDeviceClient = require('azure-iot-provisioning-device').ProvisioningDeviceClient;
+
+var provisioningHost = 'global.azure-devices-provisioning.net';
+var idScope = '0ne00085779';
+var registrationId = 'RABHomeHue';
+var symmetricKey = 'zqXuXF3BnbTtjSpQWUK3F7NcCOQcUnB5oAowKFxBBUM=';
+var provisioningSecurityClient = new SymmetricKeySecurityClient(registrationId, symmetricKey);
+var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, idScope, new ProvisioningTransport(), provisioningSecurityClient);
+
 const MINIMUM_LIGHT = 1;
 const MAXIMUM_LIGHT = 50;
 
@@ -21,8 +36,6 @@ const MAXIMUM_GROUP = 50;
 
 var hue;
 
-var messageId = 0;
-var deviceId;
 var client;
 var config;
 
@@ -506,7 +519,7 @@ function onStop(request, response) {
 
 	convertPayload(request);
 	
-	response.send(200, 'Successully stop sending message to cloud', function (err) {
+	response.send(200, 'Successfully stop sending message to cloud', function (err) {
 		if (err) {
 			console.error('[IoT hub Client] Failed sending a method response:\n' + err.message);
 		}
@@ -525,200 +538,210 @@ function onReceiveMessage(msg) {
 	});
 }
 
-function initClient(connectionStringParam, credentialPath) {
-	var connectionString = ConnectionString.parse(connectionStringParam);
-	deviceId = connectionString.DeviceId;
+function initializeBindings() {
+	// Set C2D and device method callback handlers
+	
+	client.onDeviceMethod('start', onStart);
+	client.onDeviceMethod('stop', onStop);
 
-	// fromConnectionString must specify a transport constructor, coming from any transport package.
-	client = Client.fromConnectionString(connectionStringParam, Protocol);
+	client.onDeviceMethod('GetLights', onGetLights);
+	client.onDeviceMethod('GetGroups', onGetGroups);
 
-	// Configure the client to use X509 authentication if required by the connection string.
-	if (connectionString.x509) {
-		// Read X.509 certificate and private key.
-		// These files should be in the current folder and use the following naming convention:
-		// [device name]-cert.pem and [device name]-key.pem, example: myraspberrypi-cert.pem
-		var connectionOptions = {
-			cert: fs.readFileSync(path.join(credentialPath, deviceId + '-cert.pem')).toString(),
-			key: fs.readFileSync(path.join(credentialPath, deviceId + '-key.pem')).toString()
-		};
+	client.onDeviceMethod('TurnOn', onTurnOn);
+	client.onDeviceMethod('TurnOff', onTurnOff);
+	client.onDeviceMethod('SetBrightness', onSetBrightness);
+	client.onDeviceMethod('SetHSV', onSetHSV);
+	client.onDeviceMethod('SetRGB', onSetRGB);
 
-		client.setOptions(connectionOptions);
+	client.onDeviceMethod('TurnGroupOn', onTurnGroupOn);
+	client.onDeviceMethod('TurnGroupOff', onTurnGroupOff);
+	client.onDeviceMethod('SetGroupBrightness', onSetGroupBrightness);
+	client.onDeviceMethod('SetGroupHSV', onSetGroupHSV);
+	client.onDeviceMethod('SetGroupRGB', onSetGroupRGB);
 
-		console.debug('[Device] Using X.509 client certificate authentication');
-	}
-	return client;
+	client.on('message', onReceiveMessage);
 }
 
-(function (connectionString) {
-	// read in configuration in config.json
-	try {
-		config = require('./config.json');
-	} catch (err) {
-		console.error('Failed to load config.json: ' + err.message);
-		return;
-	}
+function updateLightConfiguration() {
+						
+	if (config.infoConfigurationSync)
+		console.info("Syncing Device Twin...");
 
-	hue = new HueHttpAPI();
+	client.getTwin((err, twin) => {
 
-	hue.setUseHTTPS(false);
-
-	hue.setUser(config.userName);
-	hue.setHost(config.hubAddress);
-
-	// create a client
-	// read out the connectionString from process environment
-	connectionString = connectionString || process.env['AzureIoTHubDeviceConnectionString'];
-	client = initClient(connectionString, config);
-
-	client.open((err) => {
 		if (err) {
-			console.error('[IoT hub Client] Connect error: ' + err.message);
+			console.error("Get twin message error : " + err);
 			return;
 		}
-		else {
-			console.log('[IoT hub Client] Connected Successfully');
+
+		if (config.debugConfigurationSync) {
+			console.debug("Desired:");
+			console.debug(JSON.stringify(twin.properties.desired));
+			console.debug("Reported:");
+			console.debug(JSON.stringify(twin.properties.reported));
 		}
 
-		// set C2D and device method callback
-		client.onDeviceMethod('start', onStart);
-		client.onDeviceMethod('stop', onStop);
+		hue.GetLights(function (error, lights) {
+			if (error) {
+				console.error('Unable to get list of lights');
+			}
+			else {
+				if (config.debugConfigurationSync)
+					console.debug("Read Lights: " + JSON.stringify(lights));
 
-		client.onDeviceMethod('GetLights', onGetLights);
-		client.onDeviceMethod('GetGroups', onGetGroups);
-
-		client.onDeviceMethod('TurnOn', onTurnOn);
-		client.onDeviceMethod('TurnOff', onTurnOff);
-		client.onDeviceMethod('SetBrightness', onSetBrightness);
-		client.onDeviceMethod('SetHSV', onSetHSV);
-		client.onDeviceMethod('SetRGB', onSetRGB);
-
-		client.onDeviceMethod('TurnGroupOn', onTurnGroupOn);
-		client.onDeviceMethod('TurnGroupOff', onTurnGroupOff);
-		client.onDeviceMethod('SetGroupBrightness', onSetGroupBrightness);
-		client.onDeviceMethod('SetGroupHSV', onSetGroupHSV);
-		client.onDeviceMethod('SetGroupRGB', onSetGroupRGB);
-
-		client.on('message', onReceiveMessage);
-
-		setInterval(() => {
-			if (config.infoConfigurationSync)
-				console.info("Syncing Device Twin...");
-
-			client.getTwin((err, twin) => {
-
-				if (err) {
-					console.error("Get twin message error : " + err);
-					return;
-				}
-
-				if (config.debugConfigurationSync) {
-					console.debug("Desired:");
-					console.debug(JSON.stringify(twin.properties.desired));
-					console.debug("Reported:");
-					console.debug(JSON.stringify(twin.properties.reported));
-				}
-
-				hue.GetLights(function (error, lights) {
+				hue.GetGroups(function (error, groups) {
 					if (error) {
-						console.error('Unable to get list of lights');
+						console.error('Unable to get list of groups');
 					}
 					else {
 						if (config.debugConfigurationSync)
-							console.debug("Read Lights: " + JSON.stringify(lights));
+							console.debug("Read Groups: " + JSON.stringify(groups));
 
-						hue.GetGroups(function (error, groups) {
-							if (error) {
-								console.error('Unable to get list of groups');
+						var hadLightChange = false;
+						var hadGroupChange = false;
+
+						var twinUpdate = {};
+						var twinLightUpdate = { "lights": {} };
+						var twinGroupUpdate = { "groups": {} };
+
+						var light;
+
+						for (var light in lights) {
+							var newLight = lights[light];
+							var oldLight = (twin.properties.reported.lights == undefined) ? undefined : twin.properties.reported.lights[light];
+
+							if (oldLight == undefined) {
+								if (config.infoConfigurationSync)
+									console.info("New light [" + light + "] discovered...");
+
+								hadLightChange = true;
+								twinLightUpdate.lights[light] = { "name": newLight.name, "type": newLight.type };
 							}
 							else {
-								if (config.debugConfigurationSync)
-									console.debug("Read Groups: " + JSON.stringify(groups));
-
-								var hadLightChange = false;
-								var hadGroupChange = false;
-
-								var twinUpdate = {};
-								var twinLightUpdate = { "lights": {} };
-								var twinGroupUpdate = { "groups": {} };
-
-								var light;
-
-								for (var light in lights) {
-									var newLight = lights[light];
-									var oldLight = (twin.properties.reported.lights == undefined) ? undefined : twin.properties.reported.lights[light];
-
-									if (oldLight == undefined) {
-										if (config.infoConfigurationSync)
-											console.info("New light [" + light + "] discovered...");
-
-										hadLightChange = true;
-										twinLightUpdate.lights[light] = { "name": newLight.name, "type": newLight.type };
-									}
-									else {
-										if (newLight.name != oldLight.name || newLight.type != oldLight.type) {
-											if (config.infoConfigurationSync)
-												console.info("Light [" + light + "] configuration changed...");
-
-											hadLightChange = true;
-											twinLightUpdate.lights[light] = { "name": newLight.name, "type": newLight.type };
-										}
-									}
-								}
-
-								var group;
-
-								for (var group in groups) {
-									var newGroup = groups[group];
-									var oldGroup = (twin.properties.reported.groups == undefined) ? undefined : twin.properties.reported.groups[group];
-
-									if (oldGroup == undefined) {
-										if (config.infoConfigurationSync)
-											console.info("New group [" + group + "] discovered...");
-
-										hadGroupChange = true;
-										twinGroupUpdate.groups[group] = { "name": newGroup.name, "type": newGroup.type };
-									}
-									else {
-										if (newGroup.name != oldGroup.name || newGroup.type != oldGroup.type) {
-											if (config.infoConfigurationSync)
-												console.info("Group [" + group + "] configuration changed...");
-
-											hadGroupChange = true;
-											twinGroupUpdate.groups[group] = { "name": newGroup.name, "type": newGroup.type };
-										}
-									}
-								}
-
-								if (hadLightChange || hadGroupChange) {
-									if (hadLightChange) {
-										twinUpdate["lights"] = twinLightUpdate["lights"];
-									}
-
-									if (hadGroupChange) {
-										twinUpdate["groups"] = twinGroupUpdate["groups"];
-									}
-
+								if (newLight.name != oldLight.name || newLight.type != oldLight.type) {
 									if (config.infoConfigurationSync)
-										console.info("Updating device twin...");
+										console.info("Light [" + light + "] configuration changed...");
 
-									// Update the device twin
-
-									twin.properties.reported.update(twinUpdate, function (err) {
-										if (err) {
-											console.error("Unable To Update Device Twin : " + err)
-										}
-
-										if (config.infoConfigurationSync)
-											console.info("Device Twin Updated");
-									});
+									hadLightChange = true;
+									twinLightUpdate.lights[light] = { "name": newLight.name, "type": newLight.type };
 								}
 							}
-						});
+						}
+
+						var group;
+
+						for (var group in groups) {
+							var newGroup = groups[group];
+							var oldGroup = (twin.properties.reported.groups == undefined) ? undefined : twin.properties.reported.groups[group];
+
+							if (oldGroup == undefined) {
+								if (config.infoConfigurationSync)
+									console.info("New group [" + group + "] discovered...");
+
+								hadGroupChange = true;
+								twinGroupUpdate.groups[group] = { "name": newGroup.name, "type": newGroup.type };
+							}
+							else {
+								if (newGroup.name != oldGroup.name || newGroup.type != oldGroup.type) {
+									if (config.infoConfigurationSync)
+										console.info("Group [" + group + "] configuration changed...");
+
+									hadGroupChange = true;
+									twinGroupUpdate.groups[group] = { "name": newGroup.name, "type": newGroup.type };
+								}
+							}
+						}
+
+						if (hadLightChange || hadGroupChange) {
+							if (hadLightChange) {
+								twinUpdate["lights"] = twinLightUpdate["lights"];
+							}
+
+							if (hadGroupChange) {
+								twinUpdate["groups"] = twinGroupUpdate["groups"];
+							}
+
+							if (config.infoConfigurationSync)
+								console.info("Updating device twin...");
+
+							// Update the device twin
+
+							twin.properties.reported.update(twinUpdate, function (err) {
+								if (err) {
+									console.error("Unable To Update Device Twin : " + err)
+								}
+
+								if (config.infoConfigurationSync)
+									console.info("Device Twin Updated");
+							});
+						}
 					}
 				});
-
-			});
-		}, config.interval);
-
+			}
+		});
 	});
-})(process.argv[2]);
+}
+
+function initClient(connectionStringParam, credentialPath) {
+	// Start the device (connect it to Azure IoT Central).
+	try {
+
+		var provisioningSecurityClient = new SymmetricKeySecurityClient(config.registrationId, config.symmetricKey);
+		var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, config.idScope, new ProvisioningTransport(), provisioningSecurityClient);
+
+		provisioningClient.register((err, result) => {
+			if (err) {
+				console.log('error registering device: ' + err);
+			} else {
+				console.log('registration succeeded');
+				console.log('assigned hub=' + result.assignedHub);
+				console.log('deviceId=' + result.deviceId);
+
+				var connectionString = 'HostName=' + result.assignedHub + ';DeviceId=' + result.deviceId + ';SharedAccessKey=' + config.symmetricKey;
+				client = Client.fromConnectionString(connectionString, iotHubTransport);
+			
+				client.open((err) => {
+					if (err) {
+						console.error('[IoT hub Client] Connect error: ' + err.message);
+						return;
+					}
+					else {
+						console.log('[IoT hub Client] Connected Successfully');
+					}
+
+					initializeBindings();
+
+					setInterval(() => {
+						updateLightConfiguration();
+					}, config.interval);
+				
+				});
+			}
+		});
+	}
+	catch(err) {
+		console.log(err);
+	}
+}
+
+// Read in configuration from config.json
+
+try {
+	config = require('./config.json');
+} catch (err) {
+	console.error('Failed to load config.json: ' + err.message);
+	return;
+}
+
+// Initialize Hue API handler
+
+hue = new HueHttpAPI();
+
+hue.setUseHTTPS(false);
+
+hue.setUser(config.userName);
+hue.setHost(config.hubAddress);
+
+// Initialize Azure IoT Client
+
+initClient();
