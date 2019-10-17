@@ -22,11 +22,6 @@ var SymmetricKeySecurityClient = require('azure-iot-security-symmetric-key').Sym
 var ProvisioningDeviceClient = require('azure-iot-provisioning-device').ProvisioningDeviceClient;
 
 var provisioningHost = 'global.azure-devices-provisioning.net';
-var idScope = '0ne00085779';
-var registrationId = 'RABHomeHue';
-var symmetricKey = 'zqXuXF3BnbTtjSpQWUK3F7NcCOQcUnB5oAowKFxBBUM=';
-var provisioningSecurityClient = new SymmetricKeySecurityClient(registrationId, symmetricKey);
-var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, idScope, new ProvisioningTransport(), provisioningSecurityClient);
 
 const MINIMUM_LIGHT = 1;
 const MAXIMUM_LIGHT = 50;
@@ -686,7 +681,7 @@ function initClient(connectionStringParam, credentialPath) {
 	// Start the device (connect it to Azure IoT Central).
 	try {
 
-		var provisioningSecurityClient = new SymmetricKeySecurityClient(config.registrationId, config.symmetricKey);
+		var provisioningSecurityClient = new SymmetricKeySecurityClient(config.deviceId, config.symmetricKey);
 		var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, config.idScope, new ProvisioningTransport(), provisioningSecurityClient);
 
 		provisioningClient.register((err, result) => {
