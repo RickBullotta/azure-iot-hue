@@ -1,0 +1,12 @@
+{
+    "interval": 60000,
+    "infoConfigurationSync" : false,
+    "debugConfigurationSync" : false,
+    "infoMethods" : true,
+    "debugMethods" : false,
+    "infoOutboundMessages" : false,
+    "debugOutboundMessages" : false,
+    "infoInboundMessages" : false,
+    "debugInboundMessages" : false
+  }
+  

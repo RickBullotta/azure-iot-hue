@@ -3,15 +3,9 @@
 */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
 const HueHttpAPI = require('./HueHttpAPI.js');
 
 const Client = require('azure-iot-device').Client;
-const ConnectionString = require('azure-iot-device').ConnectionString;
-const Message = require('azure-iot-device').Message;
-const Protocol = require('azure-iot-device-mqtt').Mqtt;
 
 // DPS and connection stuff
 
@@ -33,6 +27,7 @@ var hue;
 
 var client;
 var config;
+var connect;
 
 var sendingMessage = true;
 
@@ -533,7 +528,7 @@ function onReceiveMessage(msg) {
 	});
 }
 
-function initializeBindings() {
+function initBindings() {
 	// Set C2D and device method callback handlers
 	
 	client.onDeviceMethod('start', onStart);
@@ -677,12 +672,17 @@ function updateLightConfiguration() {
 	});
 }
 
-function initClient(connectionStringParam, credentialPath) {
+function initLogic() {
+	setInterval(() => {
+		updateLightConfiguration();
+	}, config.interval);
+}
+
+function initClient() {
 	// Start the device (connect it to Azure IoT Central).
 	try {
-
-		var provisioningSecurityClient = new SymmetricKeySecurityClient(config.deviceId, config.symmetricKey);
-		var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, config.idScope, new ProvisioningTransport(), provisioningSecurityClient);
+		var provisioningSecurityClient = new SymmetricKeySecurityClient(connect.deviceId, connect.symmetricKey);
+		var provisioningClient = ProvisioningDeviceClient.create(provisioningHost, connect.idScope, new ProvisioningTransport(), provisioningSecurityClient);
 
 		provisioningClient.register((err, result) => {
 			if (err) {
@@ -692,7 +692,7 @@ function initClient(connectionStringParam, credentialPath) {
 				console.log('assigned hub=' + result.assignedHub);
 				console.log('deviceId=' + result.deviceId);
 
-				var connectionString = 'HostName=' + result.assignedHub + ';DeviceId=' + result.deviceId + ';SharedAccessKey=' + config.symmetricKey;
+				var connectionString = 'HostName=' + result.assignedHub + ';DeviceId=' + result.deviceId + ';SharedAccessKey=' + connect.symmetricKey;
 				client = Client.fromConnectionString(connectionString, iotHubTransport);
 			
 				client.open((err) => {
@@ -704,12 +704,9 @@ function initClient(connectionStringParam, credentialPath) {
 						console.log('[IoT hub Client] Connected Successfully');
 					}
 
-					initializeBindings();
+					initBindings();
 
-					setInterval(() => {
-						updateLightConfiguration();
-					}, config.interval);
-				
+					initLogic();
 				});
 			}
 		});
@@ -719,23 +716,40 @@ function initClient(connectionStringParam, credentialPath) {
 	}
 }
 
+function initDevice() {
+	// Initialize Hue API handler
+
+	hue = new HueHttpAPI();
+
+	hue.setUseHTTPS(false);
+
+	hue.setUser(connect.userName);
+	hue.setHost(connect.hubAddress);
+}
+
 // Read in configuration from config.json
 
 try {
 	config = require('./config.json');
 } catch (err) {
+	config = {};
 	console.error('Failed to load config.json: ' + err.message);
 	return;
 }
 
-// Initialize Hue API handler
+// Read in connection details from connect.json
 
-hue = new HueHttpAPI();
+try {
+	connect = require('./connect.json');
+} catch (err) {
+	connect = {};
+	console.error('Failed to load connect.json: ' + err.message);
+	return;
+}
 
-hue.setUseHTTPS(false);
+// Perform any device initialization
 
-hue.setUser(config.userName);
-hue.setHost(config.hubAddress);
+initDevice();
 
 // Initialize Azure IoT Client
 
